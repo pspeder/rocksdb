@@ -24,6 +24,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <cstdlib>
+#include "logging/logging.h"
+#include <sys/sdt.h>
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -69,6 +71,7 @@ Mutex::Mutex(bool adaptive) {
 #else
   PthreadCall("init mutex", pthread_mutex_init(&mu_, nullptr));
 #endif // ROCKSDB_PTHREAD_ADAPTIVE_MUTEX
+  DTRACE_PROBE1(itu_project, critical_section_entered, &mu_);
 }
 
 Mutex::~Mutex() { PthreadCall("destroy mutex", pthread_mutex_destroy(&mu_)); }
