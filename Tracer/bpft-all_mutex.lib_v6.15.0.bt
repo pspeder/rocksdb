@@ -1,0 +1,142 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+	printf("Tracing mutexes in RocksDB, Ctrl-C to end.\n");
+}
+
+uretprobe:/lib/libpthread.so.0:pthread_mutex_init
+/($1 == 0 || pid == $1) && comm == "simple_example"/
+{
+  printf("Thread %d lock on a Mutex.\n",  tid);
+  @pthread_mutex_creation[tid] = count();
+  @pthread_mutexes++;
+}
+uprobe:/lib/libpthread.so.0:pthread_mutex_lock
+/($1 == 0 || pid == $1) && comm == "simple_example"/
+{
+  @lock_start[tid] = nsecs;
+  @lock_addr[tid] = arg0;
+}
+uretprobe:/lib/libpthread.so.0:pthread_mutex_lock
+/($1 == 0 || pid == $1) && comm == "simple_example"/
+{
+  $delta = nsecs - @lock_start[tid];
+  printf("Thread %d locked a pthread lock in %d μs.\n",  tid, $delta);
+  @pthread_mutex_lock[tid] = count();
+  @pthread_mutex_lock_stats[tid] = stats($delta);
+  @pthread_mutex_locks++;
+}
+uretprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x00000000012d7dec
+{
+  printf("Thread %d created a Mutex.\n",  tid);
+  @cpp_mutex_creation[tid] = count();
+  @cpp_mutexes++;
+}
+uretprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x00000000012d7efa
+{
+  printf("Thread %d lock on a Mutex.\n",  tid);
+  @cpp_mutex_lock[tid] = count();
+  @cpp_mutex_locks++;
+}
+uretprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x0000000000f8a860
+{
+  printf("Thread %d created an InstrumentedMutex.\n",  tid);
+  @cpp_instmutex_creation[tid] = count();
+  @cpp_instmutexes++;
+}
+uretprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x0000000000f8a860
+{
+  printf("Thread %d lock on an InstrumentedMutex.\n",  tid);
+  @cpp_instmutex_intlock[tid] = count();
+  @cpp_instmutex_locks++;
+}
+uretprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x0000000000f8a946
+{
+  printf("Thread %d internal lock on an InstrumentedMutex.\n",  tid);
+  @cpp_instmutex_intlock[tid] = count();
+}
+uretprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x000000000131c0a8
+{
+  printf("folly distributed mutex created\n");
+  @cpp_instmutex_intlock[tid] = count();
+}
+
+END
+{
+	clear(@lock_start);
+	clear(@lock_addr);
+}
+
+
+
+// Some more or less relevant instructions in librocksdb.so
+// THESE WERE FOR 6.12.0
+//00000000012d7efa g     F .text	0000000000000031              rocksdb::port::Mutex::Lock()
+//0000000000f8a860 g     F .text	00000000000000e5              rocksdb::InstrumentedMutex::Lock()
+//0000000000f8a946 g     F .text	0000000000000025              rocksdb::InstrumentedMutex::LockInternal()
+//000000000131c0a8  w    F .text	0000000000000020              folly::detail::distributed_mutex::DistributedMutex<std::atomic, true>::DistributedMutex()
+//000000000118619e g     F .text	0000000000000011              rocksdb::ThreadLocalPtr::StaticMeta::Mutex()
+//00000000012d7dec g     F .text	00000000000000e4              rocksdb::port::Mutex::Mutex(bool)
+//0000000000d3de68  w    F .text	0000000000000049              rocksdb::InstrumentedMutex::InstrumentedMutex(bool)
+//0000000000dd539e g     F .text	0000000000000021              rocksdb::DBImpl::TEST_UnlockMutex()
+//00000000012d7ed0 g     F .text	0000000000000029              rocksdb::port::Mutex::~Mutex()
+//0000000000d3f930  w    F .text	000000000000001b              rocksdb::InstrumentedMutex::~InstrumentedMutex()
+//0000000000f73e9c  w    F .text	0000000000000020              rocksdb::SpinMutex::SpinMutex()
+//00000000012d81b8 g     F .text	0000000000000029              rocksdb::port::RWMutex::~RWMutex()
+//0000000000dd537c g     F .text	0000000000000021              rocksdb::DBImpl::TEST_LockMutex()
+//0000000000e288d0 g     F .text	00000000000000dd              rocksdb::InternalStats::GetIntPropertyOutOfMutex(rocksdb::DBPropertyInfo const&, rocksdb::Version*, unsigned long*)
+//0000000001288500 g     F .text	000000000000003f              rocksdb::TransactionDBMutexFactoryImpl::AllocateMutex()
+//0000000000f73e9c  w    F .text	0000000000000020              rocksdb::SpinMutex::SpinMutex()
+//0000000000d3de68  w    F .text	0000000000000049              rocksdb::InstrumentedMutex::InstrumentedMutex(bool)
+//00000000011873c8  w    F .text	0000000000000014              rocksdb::ThreadLocalPtr::StaticMeta::MemberMutex()
+//000000000125322e  w    F .text	0000000000000057              rocksdb::EvictableHashTable<rocksdb::VolatileCacheTier::CacheData, rocksdb::VolatileCacheTier::CacheDataHash, rocksdb::VolatileCacheTier::CacheDataEqual>::GetMutex(unsigned long)
+//000000000128891e  w    F .text	000000000000001d              rocksdb::TransactionDBMutex::TransactionDBMutex()
+//0000000001288870  w    F .text	0000000000000026              rocksdb::TransactionDBMutex::~TransactionDBMutex()
+//00000000012d81b8 g     F .text	0000000000000029              rocksdb::port::RWMutex::~RWMutex()
+//0000000000f2e8f6  w    F .text	0000000000000062              rocksdb::WriteThread::Writer::CreateMutex()
+//000000000124d1ac  w    F .text	0000000000000057              rocksdb::EvictableHashTable<rocksdb::BlockCacheFile, rocksdb::BlockCacheTierMetadata::BlockCacheFileHash, rocksdb::BlockCacheTierMetadata::BlockCacheFileEqual>::GetMutex(unsigned long)
+//0000000000d3f930  w    F .text	000000000000001b              rocksdb::InstrumentedMutex::~InstrumentedMutex()
+//00000000012d818a g     F .text	000000000000002e              rocksdb::port::RWMutex::RWMutex()
+//00000000012d7dec g     F .text	00000000000000e4              rocksdb::port::Mutex::Mutex(bool)
+//0000000001288852  w    F .text	000000000000001d              rocksdb::TransactionDBMutex::~TransactionDBMutex()
+//000000000128891e  w    F .text	000000000000001d              rocksdb::TransactionDBMutex::TransactionDBMutex()
+//0000000001288852  w    F .text	000000000000001d              rocksdb::TransactionDBMutex::~TransactionDBMutex()
+//000000000131c0a8  w    F .text	0000000000000020              folly::detail::distributed_mutex::DistributedMutex<std::atomic, true>::DistributedMutex()
+//0000000000d3e3aa  w    F .text	0000000000000041              rocksdb::WriteThread::Writer::StateMutex()
+//00000000012d7ed0 g     F .text	0000000000000029              rocksdb::port::Mutex::~Mutex()
+//00000000012d818a g     F .text	000000000000002e              rocksdb::port::RWMutex::RWMutex()
+//0000000000d3deb2  w    F .text	0000000000000054              rocksdb::InstrumentedMutex::InstrumentedMutex(rocksdb::Statistics*, rocksdb::Env*, int, bool)
+//0000000000d3deb2  w    F .text	0000000000000054              rocksdb::InstrumentedMutex::InstrumentedMutex(rocksdb::Statistics*, rocksdb::Env*, int, bool)
+//0000000000e288d0 g    DF .text	00000000000000dd  Base        rocksdb::InternalStats::GetIntPropertyOutOfMutex(rocksdb::DBPropertyInfo const&, rocksdb::Version*, unsigned long*)
+//0000000000f73e9c  w   DF .text	0000000000000020  Base        rocksdb::SpinMutex::SpinMutex()
+//0000000001288500 g    DF .text	000000000000003f  Base        rocksdb::TransactionDBMutexFactoryImpl::AllocateMutex()
+//000000000131c0a8  w   DF .text	0000000000000020  Base        folly::detail::distributed_mutex::DistributedMutex<std::atomic, true>::DistributedMutex()
+//0000000000f73e9c  w   DF .text	0000000000000020  Base        rocksdb::SpinMutex::SpinMutex()
+//000000000128891e  w   DF .text	000000000000001d  Base        rocksdb::TransactionDBMutex::TransactionDBMutex()
+//0000000000d3deb2  w   DF .text	0000000000000054  Base        rocksdb::InstrumentedMutex::InstrumentedMutex(rocksdb::Statistics*, rocksdb::Env*, int, bool)
+//000000000131c0a8  w   DF .text	0000000000000020  Base        folly::detail::distributed_mutex::DistributedMutex<std::atomic, true>::DistributedMutex()
+//000000000128891e  w   DF .text	000000000000001d  Base        rocksdb::TransactionDBMutex::TransactionDBMutex()
+//0000000000d3de68  w   DF .text	0000000000000049  Base        rocksdb::InstrumentedMutex::InstrumentedMutex(bool)
+//0000000001288870  w   DF .text	0000000000000026  Base        rocksdb::TransactionDBMutex::~TransactionDBMutex()
+//0000000000d3de68  w   DF .text	0000000000000049  Base        rocksdb::InstrumentedMutex::InstrumentedMutex(bool)
+//0000000001288852  w   DF .text	000000000000001d  Base        rocksdb::TransactionDBMutex::~TransactionDBMutex()
+//00000000012d818a g    DF .text	000000000000002e  Base        rocksdb::port::RWMutex::RWMutex()
+//0000000001288852  w   DF .text	000000000000001d  Base        rocksdb::TransactionDBMutex::~TransactionDBMutex()
+//00000000012d818a g    DF .text	000000000000002e  Base        rocksdb::port::RWMutex::RWMutex()
+//0000000000d3f930  w   DF .text	000000000000001b  Base        rocksdb::InstrumentedMutex::~InstrumentedMutex()
+//00000000012d7dec g    DF .text	00000000000000e4  Base        rocksdb::port::Mutex::Mutex(bool)
+//000000000118619e g    DF .text	0000000000000011  Base        rocksdb::ThreadLocalPtr::StaticMeta::Mutex()
+//0000000000d3f930  w   DF .text	000000000000001b  Base        rocksdb::InstrumentedMutex::~InstrumentedMutex()
+//00000000012d7dec g    DF .text	00000000000000e4  Base        rocksdb::port::Mutex::Mutex(bool)
+//00000000012d81b8 g    DF .text	0000000000000029  Base        rocksdb::port::RWMutex::~RWMutex()
+//00000000012d81b8 g    DF .text	0000000000000029  Base        rocksdb::port::RWMutex::~RWMutex()
+//0000000000f2e8f6  w   DF .text	0000000000000062  Base        rocksdb::WriteThread::Writer::CreateMutex()
+//0000000000dd537c g    DF .text	0000000000000021  Base        rocksdb::DBImpl::TEST_LockMutex()
+//00000000012d7ed0 g    DF .text	0000000000000029  Base        rocksdb::port::Mutex::~Mutex()
+//000000000124d1ac  w   DF .text	0000000000000057  Base        rocksdb::EvictableHashTable<rocksdb::BlockCacheFile, rocksdb::BlockCacheTierMetadata::BlockCacheFileHash, rocksdb::BlockCacheTierMetadata::BlockCacheFileEqual>::GetMutex(unsigned long)
+//00000000012d7ed0 g    DF .text	0000000000000029  Base        rocksdb::port::Mutex::~Mutex()
+//00000000011873c8  w   DF .text	0000000000000014  Base        rocksdb::ThreadLocalPtr::StaticMeta::MemberMutex()
+//0000000000d3deb2  w   DF .text	0000000000000054  Base        rocksdb::InstrumentedMutex::InstrumentedMutex(rocksdb::Statistics*, rocksdb::Env*, int, bool)
+//000000000125322e  w   DF .text	0000000000000057  Base        rocksdb::EvictableHashTable<rocksdb::VolatileCacheTier::CacheData, rocksdb::VolatileCacheTier::CacheDataHash, rocksdb::VolatileCacheTier::CacheDataEqual>::GetMutex(unsigned long)
+//0000000000d3e3aa  w   DF .text	0000000000000041  Base        rocksdb::WriteThread::Writer::StateMutex()

@@ -7,4 +7,3 @@ cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Debug \
   -DWITH_EXAMPLES=ON
 cmake --build build --parallel 4 --config Debug --target ${1:-simple_example_traced}
-

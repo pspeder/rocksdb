@@ -1,0 +1,47 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+	printf("Tracing mutexes in RocksDB, Ctrl-C to end.\n");
+}
+
+uprobe:/lib/libpthread.so.0:pthread_mutex_lock
+/($1 == 0 || pid == $1) && comm == "simple_example"/
+{
+  @lock_start[tid] = nsecs;
+  @lock_addr[tid] = arg0;
+}
+uretprobe:/lib/libpthread.so.0:pthread_mutex_lock
+/($1 == 0 || pid == $1) && comm == "simple_example"/
+{
+  $delta = nsecs - @lock_start[tid];
+  printf("Acquired a pthread lock. Took %d μs.\n", $delta);
+  @lock_start[tid] = nsecs;
+  @lock_per_tid[tid]++;
+  @delta_per_tid_hist = lhist($delta, 0, 17500, 500);
+  @tid_cpu[tid,cpu]++;
+  @total_locks_acquired = count();
+}
+
+END
+{
+	clear(@lock_start);
+	clear(@lock_addr);
+
+}
+
+
+//uprobe:/lib/libpthread.so.0:pthread_mutex_lock
+///($1 == 0 || pid == $1) && comm == "simple_example"/
+//{
+//  @lock_start[tid] = nsecs;
+//  @lock_addr[tid] = arg0;
+//}
+//uretprobe:/lib/libpthread.so.0:pthread_mutex_lock
+///($1 == 0 || pid == $1) && comm == "simple_example"/
+//{
+//  $delta = nsecs - @lock_start[tid];
+//  printf("Acquired a pthread lock. Took %d μs.\n",
+//  @lock_start[tid] = nsecs;
+//  @lock_per_tid[tid]++;
+//}

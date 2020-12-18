@@ -3,6 +3,7 @@
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
 
+#include <iostream>
 #include <cstdio>
 #include <string>
 
@@ -82,6 +83,13 @@ int main() {
   assert(pinnable_val == "value");
   pinnable_val.Reset();
   // The Slice pointed by pinnable_val is not valid after this point
+
+  // Flush the WAL to SST
+  //db->CompactFiles(
+  s = db->FlushWAL(true);
+  assert(s.ok());
+  //s = db->Flush();
+  //assert(s.ok());
 
   delete db;
 

@@ -1,0 +1,26 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+	printf("Tracing mutexes in RocksDB, Ctrl-C to end.\n");
+}
+
+// port::PthreadCall
+uprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x0000000001378ba0
+{
+  //@pthread_call[tid]++;
+  // Collect operation and return code from pthread call, to identify failing ops.
+  @pthread_call[str(arg0), arg1]++;
+}
+
+// ThreadPoolImpl::PthreadCall
+uprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:0x000000000122ea5a
+{
+  //@pthread_call[tid]++;
+  @thread_pool_impl_pthread_call[str(arg0), arg1]++;
+}
+
+END
+{
+  printf("Done\n");
+}

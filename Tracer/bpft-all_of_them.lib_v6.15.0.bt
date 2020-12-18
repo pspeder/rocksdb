@@ -1,0 +1,67 @@
+#!/usr/local/bin/bpftrace
+/*
+ * pmlock - Show pthread mutex lock times and user stacks.
+ *
+ * See BPF Performance Tools, Chapter 13, for an explanation of this tool.
+ *
+ * Copyright (c) 2019 Brendan Gregg.
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * This was originally created for the BPF Performance Tools book
+ * published by Addison Wesley. ISBN-13: 9780136554820
+ * When copying or porting, include this comment.
+ *
+ * 17-Feb-2019  Brendan Gregg   Created this.
+ * December-2020 Paw S. Pedersen  Adapted this to trace only RocksDB's simple_example binary and output some additional info.
+ */
+
+BEGIN
+{
+	printf("Tracing all mutexes in RocksDB, Ctrl-C to end.\n");
+}
+
+uprobe:/lib/libpthread.so.0:pthread_mutex_lock
+/($1 == 0 || pid == $1) && comm == "simple_example"/
+{
+  @counter[comm, "enter"] = count();
+  @lock_start[tid] = nsecs;
+  @lock_addr[tid] = arg0;
+  //printf("Here1\n");
+  @[cpu] = count();
+}
+
+
+uretprobe:/lib/libpthread.so.0:pthread_mutex_lock
+/($1 == 0 || pid == $1) && comm == "simple_example" && @lock_start[tid]/
+{
+  //@[ustack()] = count();
+  //@lock_latency_ns[usym(@lock_addr[tid]), ustack(), comm] =
+  //    hist(nsecs - @lock_start[tid]);
+  @counter[comm, "return"] = count();
+  //@total_time[comm] = sum(nsecs - @lock_start[tid]);
+  @ss[@lock_addr[tid], comm] = stats(nsecs - @lock_start[tid]);
+	delete(@lock_start[tid]);
+	delete(@lock_addr[tid]);
+  //printf("Here2\n");
+}
+
+// Returning from Mutex constructor
+uretprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.12.0:0x00000000012d7dec
+{
+  @counter[comm,"new_mutex"] = count();
+}
+
+// Instantiated a RWMutex::WriteLock()
+uprobe:/home/user/ADaS/A1/RocksDB/build/librocksdb.so.6.15.0:_ZN7rocksdb4port7RWMutex9WriteLockEv
+{
+  @counter[comm,"new_mutex"] = count();
+}
+
+END
+{
+  //@ss = stats(@total_time);
+  //@av = avg(@counter);
+  //@mmm = hist(@ss);
+	clear(@lock_start);
+	clear(@lock_addr);
+}
+

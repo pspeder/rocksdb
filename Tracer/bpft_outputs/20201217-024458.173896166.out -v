@@ -1,0 +1,20 @@
+Attaching 4 probes...
+Tracing mutexes in RocksDB, Ctrl-C to end.
+Done
+@pthread_call[set mutex attr, 0]: 1
+@pthread_call[read unlock, 0]: 1
+@pthread_call[destroy mutex attr, 0]: 1
+@pthread_call[read lock, 0]: 1
+@pthread_call[init mutex attr, 0]: 1
+@pthread_call[write unlock, 0]: 2
+@pthread_call[write lock, 0]: 2
+@pthread_call[broadcast, 0]: 12
+@pthread_call[destroy cv, 0]: 12
+@pthread_call[init cv, 0]: 12
+@pthread_call[unlock, 0]: 404
+@pthread_call[lock, 0]: 404
+@pthread_call[destroy mutex, 0]: 554
+@pthread_call[init mutex, 0]: 555
+
+@thread_pool_impl_pthread_call[mutex_init, 0]: 1
+
